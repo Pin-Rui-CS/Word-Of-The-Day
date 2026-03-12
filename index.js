@@ -83,8 +83,12 @@ function parseWOTD(text) {
  * ─────
  * Process batches in chronological order.
  * For each batch: "needed" = all unfilled dates ≤ submission date.
- *   - words ≤ needed  →  fill the oldest slots.
- *   - words > needed  →  latest N fill the slots; oldest extras become
+ * Always fill the most recent slots first (newest → oldest), using the
+ * latest words. This means a single word always lands on the submission
+ * date; gaps further back stay as `none`.
+ *
+ *   - words ≤ needed  →  latest N words fill the N most recent slots.
+ *   - words > needed  →  latest N fill all slots; oldest extras become
  *                        additional rows on the submission date itself.
  *
  * Returns { 'YYYY-MM-DD': [wordObj, ...], ... }
@@ -102,16 +106,20 @@ function assign(submissions, datesNeeded) {
     for (const subDate of Object.keys(byDate).sort()) {
         const words   = byDate[subDate];
         const nWords  = words.length;
-        const needed  = datesNeeded.filter(d => d <= subDate && unfilled.has(d));
+        // Sort needed dates oldest→newest, then take the most recent N
+        const needed  = datesNeeded.filter(d => d <= subDate && unfilled.has(d)).sort();
         const nNeeded = needed.length;
 
         if (nWords <= nNeeded) {
-            for (let i = 0; i < nWords; i++) {
-                (assignments[needed[i]] ??= []).push(words[i]);
-                unfilled.delete(needed[i]);
+            // Fill the nWords most recent slots with the latest nWords words
+            const slotsToFill = needed.slice(nNeeded - nWords); // most recent N
+            const wordsToUse  = words.slice(nWords - nWords);   // all words (latest first within batch)
+            for (let i = 0; i < slotsToFill.length; i++) {
+                (assignments[slotsToFill[i]] ??= []).push(wordsToUse[i]);
+                unfilled.delete(slotsToFill[i]);
             }
         } else {
-            // Latest nNeeded words fill the needed slots
+            // More words than needed slots — latest nNeeded fill all slots
             const extras  = words.slice(0, nWords - nNeeded);
             const toPlace = words.slice(nWords - nNeeded);
             for (let i = 0; i < needed.length; i++) {
