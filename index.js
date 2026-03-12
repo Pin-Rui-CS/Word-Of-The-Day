@@ -254,6 +254,7 @@ client.on('qr', qr => {
 
 client.on('ready', async () => {
     console.log('WhatsApp connected.');
+    clearTimeout(connectionTimer);
     try {
         await run(client);
     } catch (err) {
@@ -261,6 +262,7 @@ client.on('ready', async () => {
         process.exitCode = 1;
     } finally {
         await client.destroy();
+        process.exit(process.exitCode ?? 0);
     }
 });
 
@@ -273,7 +275,7 @@ client.on('auth_failure', msg => {
 
 // Fail the job if WhatsApp never connects (e.g. session expired + no one scanned QR)
 const CONNECTION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-setTimeout(() => {
+const connectionTimer = setTimeout(() => {
     console.error('Timed out waiting for WhatsApp to connect. Session may have expired.');
     process.exit(1);
 }, CONNECTION_TIMEOUT);
