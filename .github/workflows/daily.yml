@@ -1,0 +1,48 @@
+name: Word of the Day → Sheets
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 8:00 am SGT (UTC+8) = 00:00 UTC
+  workflow_dispatch:       # lets you trigger manually from the GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Restore the saved WhatsApp session (fails gracefully on first run)
+      - name: Restore WhatsApp session
+        uses: actions/download-artifact@v4
+        with:
+          name: wwebjs-session
+          path: .wwebjs_auth
+        continue-on-error: true
+
+      - name: Sync to Google Sheets
+        env:
+          WHATSAPP_GROUP_CHAT_ID:  ${{ secrets.WHATSAPP_GROUP_CHAT_ID }}
+          GOOGLE_SPREADSHEET_ID:   ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          CHROME_BIN: /usr/bin/google-chrome-stable
+        run: node index.js
+
+      # Always save the session so the next run doesn't need a QR scan
+      - name: Save WhatsApp session
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwebjs-session
+          path: .wwebjs_auth
+          retention-days: 400
+          overwrite: true
