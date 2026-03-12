@@ -21,13 +21,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Restore the saved WhatsApp session (fails gracefully on first run)
+      # Restore the saved WhatsApp session (cache miss is fine on first run)
       - name: Restore WhatsApp session
-        uses: actions/download-artifact@v4
+        uses: actions/cache/restore@v4
         with:
-          name: wwebjs-session
           path: .wwebjs_auth
-        continue-on-error: true
+          key: wwebjs-session-${{ github.run_id }}
+          restore-keys: wwebjs-session-
 
       - name: Sync to Google Sheets
         env:
@@ -40,9 +40,7 @@ jobs:
       # Always save the session so the next run doesn't need a QR scan
       - name: Save WhatsApp session
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/cache/save@v4
         with:
-          name: wwebjs-session
           path: .wwebjs_auth
-          retention-days: 400
-          overwrite: true
+          key: wwebjs-session-${{ github.run_id }}

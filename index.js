@@ -207,7 +207,7 @@ async function run(client) {
 
     // Fetch messages from the group
     const chat     = await client.getChatById(GROUP_CHAT_ID);
-    const messages = await chat.fetchMessages({ limit: 500 });
+    const messages = await chat.fetchMessages({ limit: 2000 });
 
     const submissions = [];
     for (const msg of messages) {
