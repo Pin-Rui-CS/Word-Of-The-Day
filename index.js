@@ -163,28 +163,78 @@ async function ensureHeader(sheets) {
 }
 
 async function getLastDate(sheets) {
+    // Read columns A (date) and B (word) to find the last row with a real word
     const res  = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${SHEET_NAME}!A:A`,
+        range: `${SHEET_NAME}!A:B`,
     });
     const rows = res.data.values ?? [];
     let latest = null;
     for (const row of rows.slice(1)) {
-        if (row[0] && row[0] !== 'none' && (!latest || row[0] > latest)) {
-            latest = row[0];
+        const date = row[0];
+        const word = row[1];
+        // Only count rows that have an actual word (not a placeholder)
+        if (date && word && word !== 'none' && (!latest || date > latest)) {
+            latest = date;
         }
     }
     return latest; // 'YYYY-MM-DD' or null
 }
 
-async function appendRows(sheets, rows) {
-    await sheets.spreadsheets.values.append({
+async function getExistingNoneRows(sheets) {
+    // Returns a map of date string → sheet row number (1-indexed) for rows
+    // where the word is 'none'. Used to update placeholders in place.
+    const res  = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${SHEET_NAME}!A:A`,
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: rows },
+        range: `${SHEET_NAME}!A:B`,
     });
+    const rows = res.data.values ?? [];
+    const map  = {};
+    for (let i = 1; i < rows.length; i++) {
+        const date = rows[i][0];
+        const word = rows[i][1];
+        if (date && (!word || word === 'none')) {
+            map[date] = i + 1; // convert to 1-indexed sheet row
+        }
+    }
+    return map;
+}
+
+async function syncRows(sheets, rows) {
+    // rows: [[date, word, meaning, ...sentences], ...]
+    // For dates that already exist as 'none' placeholders, update in place.
+    // For new dates, append.
+    const noneRows = await getExistingNoneRows(sheets);
+
+    const updates = [];
+    const toAppend = [];
+
+    for (const row of rows) {
+        const date = row[0];
+        if (noneRows[date]) {
+            updates.push({ range: `${SHEET_NAME}!A${noneRows[date]}`, values: [row] });
+            delete noneRows[date]; // each placeholder updated only once; extras go to append
+        } else {
+            toAppend.push(row);
+        }
+    }
+
+    if (updates.length > 0) {
+        await sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: { valueInputOption: 'RAW', data: updates },
+        });
+    }
+
+    if (toAppend.length > 0) {
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID,
+            range: `${SHEET_NAME}!A:A`,
+            valueInputOption: 'RAW',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody: { values: toAppend },
+        });
+    }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -233,8 +283,8 @@ async function run(client) {
         }
     }
 
-    await appendRows(sheets, rows);
-    console.log(`Appended ${rows.length} row(s).`);
+    await syncRows(sheets, rows);
+    console.log(`Synced ${rows.length} row(s).`);
 }
 
 // ── WhatsApp client bootstrap ─────────────────────────────────────────────────
